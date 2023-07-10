@@ -1,5 +1,6 @@
 import 'package:agora_rtc_engine/agora_rtc_engine.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import '../../../../config.dart';
@@ -14,7 +15,7 @@ class HomeView extends StatefulWidget {
 class _HomeViewState extends State<HomeView> {
   late RtcEngine agoraEngine;
   String channelName = 'test';
-  final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
   int uid = 0;
 
   bool _isHost = true;
@@ -29,63 +30,78 @@ class _HomeViewState extends State<HomeView> {
   }
 
   showMessage(String message) {
-    scaffoldMessengerKey.currentState?.showSnackBar(SnackBar(
-      content: Text(message),
-    ));
+    Get.snackbar(
+      'Agora Video Call',
+      message,
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
 
   Future<void> setupVideoSDKEngine() async {
     // retrieve or request camera and microphone permissions
-    await [Permission.microphone, Permission.camera].request();
-    agoraEngine = createAgoraRtcEngine();
-    await agoraEngine.initialize(const RtcEngineContext(appId: Config.appId));
-    await agoraEngine.enableVideo();
-    RtcEngineEventHandler(
-      onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
-        showMessage("Local user uid:${connection.localUid} joined the channel");
-        setState(() {
-          _isJoined = true;
-        });
-      },
-      onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
-        showMessage("Remote user uid:$remoteUid joined the channel");
-        setState(() {
-          _remoteUid = remoteUid;
-        });
-      },
-      onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
-        showMessage("Remote user uid:$remoteUid left the channel");
-        setState(() {
-          _remoteUid = null;
-        });
-      },
-    );
+    try {
+      await [Permission.microphone, Permission.camera].request();
+      agoraEngine = createAgoraRtcEngine();
+      await agoraEngine.initialize(const RtcEngineContext(appId: Config.appId));
+      await agoraEngine.enableVideo();
+      setState(() {
+        _isJoined = true;
+      });
+
+      RtcEngineEventHandler(
+        onJoinChannelSuccess: (RtcConnection connection, int elapsed) {
+          showMessage("Local user uid:${connection.localUid} joined the channel");
+          setState(() {
+            _isJoined = true;
+          });
+        },
+        onUserJoined: (RtcConnection connection, int remoteUid, int elapsed) {
+          showMessage("Remote user uid:$remoteUid joined the channel");
+          setState(() {
+            _remoteUid = remoteUid;
+          });
+        },
+        onUserOffline: (RtcConnection connection, int remoteUid, UserOfflineReasonType reason) {
+          showMessage("Remote user uid:$remoteUid left the channel");
+          setState(() {
+            _remoteUid = null;
+          });
+        },
+        onError: (err, msg) => showMessage(msg),
+      );
+    } catch (e) {
+      Get.log(e.toString());
+    }
   }
 
   void join() async {
     // Set channel options
-    ChannelMediaOptions options;
+    try {
+      ChannelMediaOptions options;
 
-    // Set channel profile and client role
-    if (_isHost) {
-      options = const ChannelMediaOptions(
-        clientRoleType: ClientRoleType.clientRoleBroadcaster,
-        channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
+      // Set channel profile and client role
+      if (_isHost) {
+        options = const ChannelMediaOptions(
+          clientRoleType: ClientRoleType.clientRoleBroadcaster,
+          channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
+        );
+        await agoraEngine.startPreview();
+      } else {
+        options = const ChannelMediaOptions(
+          clientRoleType: ClientRoleType.clientRoleAudience,
+          channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
+        );
+      }
+
+      await agoraEngine.joinChannel(
+        token: Config.tempToken,
+        channelId: channelName,
+        options: options,
+        uid: uid,
       );
-      await agoraEngine.startPreview();
-    } else {
-      options = const ChannelMediaOptions(
-        clientRoleType: ClientRoleType.clientRoleAudience,
-        channelProfile: ChannelProfileType.channelProfileLiveBroadcasting,
-      );
+    } catch (e) {
+      Get.log(e.toString());
     }
-
-    await agoraEngine.joinChannel(
-      token: Config.tempToken,
-      channelId: channelName,
-      options: options,
-      uid: uid,
-    );
   }
 
   void leave() {
@@ -98,7 +114,7 @@ class _HomeViewState extends State<HomeView> {
 
   void _handleRadioValueChange(bool? value) async {
     setState(() {
-      _isHost = (value == true);
+      _isHost = value!;
     });
     if (_isJoined) leave();
   }
@@ -138,14 +154,14 @@ class _HomeViewState extends State<HomeView> {
 
   @override
   void initState() {
-    super.initState();
     setupVideoSDKEngine();
+    super.initState();
   }
 
   @override
   Widget build(BuildContext context) {
+    Get.log('isHost: $_isHost, isJoined: $_isJoined, remoteUid: $_remoteUid');
     return Scaffold(
-      key: scaffoldMessengerKey,
       appBar: AppBar(
         title: const Text('HomeView'),
         centerTitle: true,
